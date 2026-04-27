@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Создать группу</title>
+    <style>
+        body { background: #0e1621; font-family: 'Segoe UI', system-ui, sans-serif; color: white; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: center; height: 100vh; }
+        .container { background: #17212b; border-radius: 24px; padding: 30px; width: 400px; }
+        input, button, select { width: 100%; margin: 12px 0; padding: 10px; border-radius: 30px; border: none; background: #242f3d; color: white; font-size: 14px; }
+        button { background: #2b5278; cursor: pointer; transition: 0.2s; }
+        button:hover { background: #3a6e9e; }
+        label { display: flex; align-items: center; gap: 8px; cursor: pointer; margin: 12px 0; }
+        a { color: #71a7cf; text-decoration: none; display: block; text-align: center; margin-top: 16px; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>Создать группу</h2>
+    <form method="post" action="/create_group">
+        <input type="text" name="name" placeholder="Название группы" required>
+        <label>
+            <input type="checkbox" name="is_open" checked> Открытая группа (без пароля)
+        </label>
+        <input type="password" name="password" placeholder="Пароль (только для закрытой группы)">
+        <button type="submit">Создать</button>
+    </form>
+    <a href="/dashboard">Назад</a>
+</div>
+</body>
+</html>

@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Мой Steam профиль</title>
+    <style>
+        body {
+            background: #0e1621;
+            font-family: 'Segoe UI', system-ui;
+            color: white;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+        }
+        .profile {
+            background: #17212b;
+            border-radius: 24px;
+            padding: 40px;
+            text-align: center;
+        }
+        img {
+            border-radius: 50%;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #2b5278;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 30px;
+            color: white;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+<div class="profile">
+    <h2>Профиль Steam</h2>
+    {% if avatar %}
+        <img src="{{ avatar }}" width="100">
+    {% endif %}
+    <p>Имя: {{ steam_name }}</p>
+    <p>Логин на сайте: {{ username }}</p>
+    <button onclick="location.href='/dashboard'">Назад</button>
+</div>
+</body>
+</html>

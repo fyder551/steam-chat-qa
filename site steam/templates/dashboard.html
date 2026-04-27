@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Дашборд</title>
+    <style>
+        body { background: #0e1621; font-family: 'Segoe UI', sans-serif; color: white; margin: 0; padding: 20px; }
+        .container { max-width: 800px; margin: auto; background: #17212b; border-radius: 24px; padding: 30px; }
+        .avatar { width: 80px; border-radius: 50%; margin: 10px 0; cursor: pointer; }
+        .button, .link-button { background: #2b5278; border: none; padding: 8px 16px; border-radius: 24px; color: white; cursor: pointer; display: inline-block; text-decoration: none; margin: 5px; }
+        input, select { padding: 8px; border-radius: 12px; border: none; margin: 5px; background: #242f3d; color: white; }
+        .section { margin-top: 20px; border-top: 1px solid #242f3d; padding-top: 15px; }
+        .friend-list, .group-list { list-style: none; padding: 0; }
+        .friend-list li, .group-list li { background: #242f3d; margin: 5px 0; padding: 8px; border-radius: 12px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; }
+        .group-item { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+        .group-name { flex-grow: 1; display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+        .group-id { font-size: 0.8rem; color: #8c8c8c; cursor: pointer; background: #0e1621; padding: 2px 6px; border-radius: 12px; }
+        .group-id:hover { background: #2b5278; color: white; }
+        .group-status { font-size: 0.8rem; color: #a2b1c6; margin-left: 8px; }
+        .group-actions { position: relative; }
+        .dots { cursor: pointer; font-size: 1.5rem; padding: 0 8px; }
+        .dropdown { display: none; position: absolute; right: 0; background: #17212b; border: 1px solid #2b5278; border-radius: 12px; z-index: 10; min-width: 120px; }
+        .dropdown button { background: none; border: none; color: white; padding: 8px 12px; text-align: left; width: 100%; cursor: pointer; }
+        .dropdown button:hover { background: #2b5278; }
+        .flash-success { background: #1e3a2a; padding: 10px; border-radius: 12px; color: #8aff7a; margin-bottom: 15px; }
+        .flash-error { background: #3e2a2a; padding: 10px; border-radius: 12px; color: #ff8a7a; margin-bottom: 15px; }
+        .modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.7); justify-content: center; align-items: center; z-index: 20; }
+        .modal-content { background: #17212b; border-radius: 24px; padding: 20px; width: 300px; }
+        .close { float: right; cursor: pointer; font-size: 1.2rem; }
+        .copy-icon { cursor: pointer; margin-left: 5px; font-size: 0.8rem; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>Добро пожаловать, {{ user }}!</h2>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+        {% for category, msg in messages %}
+            <div class="flash-{{ category }}">{{ msg }}</div>
+        {% endfor %}
+    {% endwith %}
+
+    {% if steam_id %}
+        <div style="display: flex; align-items: center; gap: 15px;">
+            <img src="{{ avatar }}" class="avatar" alt="Avatar" id="steam-avatar" style="cursor: pointer;">
+            <div>
+                <p>Steam: <a href="/steam_profile/{{ steam_id }}" target="_blank">{{ steam_name }}</a></p>
+                <div class="group-actions" style="display: inline-block;">
+                    <span class="dots" id="steam-dots">⋮</span>
+                    <div class="dropdown" id="steam-dropdown">
+                        <button id="unlink-steam">Отвязать Steam</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <a href="/chat" class="button">Чат</a>
+    {% else %}
+        <form method="post">
+            <input type="text" name="steam_link" placeholder="https://steamcommunity.com/profiles/76561199444289707/" size=50 required>
+            <button type="submit" class="button">Привязать Steam</button>
+        </form>
+    {% endif %}
+
+    {% if steam_id %}
+    <div class="section">
+        <button id="addFriendBtn" class="button">+ Добавить друга</button>
+        <button id="requestsBtn" class="button">📨 Заявки</button>
+        <button id="sentBtn" class="button">📤 Отправленные</button>
+
+        <!-- Модальное окно добавления друга -->
+        <div id="addFriendModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h3>Добавить друга</h3>
+                <form method="post" action="/add_friend">
+                    <input type="text" name="friend_username" placeholder="Логин друга" required>
+                    <button type="submit" class="button">Отправить заявку</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Модальное окно заявок -->
+        <div id="requestsModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h3>Входящие заявки</h3>
+                {% if pending_requests %}
+                    <ul class="friend-list">
+                    {% for req in pending_requests %}
+                        <li>{{ req }} <a href="/accept_friend/{{ req }}" class="link-button">Принять</a></li>
+                    {% endfor %}
+                    </ul>
+                {% else %}
+                    <p>Нет заявок</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Модальное окно отправленных -->
+        <div id="sentModal" class="modal">
+            <div class="modal-content">
+                <span class="close">&times;</span>
+                <h3>Отправленные заявки</h3>
+                {% if sent_requests %}
+                    <ul class="friend-list">
+                    {% for req in sent_requests %}
+                        <li>{{ req }} (ожидание)</li>
+                    {% endfor %}
+                    </ul>
+                {% else %}
+                    <p>Нет отправленных заявок</p>
+                {% endif %}
+            </div>
+        </div>
+
+        <h3>Друзья</h3>
+        <ul class="friend-list">
+            {% for friend in friends %}
+                <li>{{ friend }}</li>
+            {% else %}
+                <li>Нет друзей</li>
+            {% endfor %}
+        </ul>
+
+        <h3>Мои группы</h3>
+        <ul class="group-list">
+            {% for g in groups %}
+                <li>
+                    <div class="group-item">
+                        <div class="group-name">
+                            {{ g[1] }}
+                            <span class="group-id" data-id="{{ g[0] }}" title="Нажмите, чтобы скопировать ID">(ID: {{ g[0] }})</span>
+                            <span class="group-status">{{ 'Открытая' if g[3] else 'Закрытая' }}</span>
+                        </div>
+                        <div class="group-actions">
+                            <span class="dots" data-group-id="{{ g[0] }}" data-group-name="{{ g[1] }}" data-group-open="{{ g[3] }}">⋮</span>
+                            <div class="dropdown" id="dropdown-{{ g[0] }}">
+                                <button class="rename-group">Переименовать</button>
+                                <button class="edit-group">Редактировать (открыть/закрыть)</button>
+                                <button class="delete-group">Удалить группу</button>
+                            </div>
+                        </div>
+                    </div>
+                </li>
+            {% else %}
+                <li>Нет групп</li>
+            {% endfor %}
+        </ul>
+
+        <a href="/create_group_page" class="button">Создать группу</a>
+
+        <h3>Вступить в группу (по ID)</h3>
+        <form method="post" action="/join_group">
+            <input type="text" name="group_id" placeholder="ID группы (число)" required>
+            <input type="password" name="password" placeholder="Пароль (для закрытой)">
+            <button type="submit" class="button">Вступить</button>
+        </form>
+
+        <h3>Вступить по коду-приглашению</h3>
+        <form method="post" action="/join_by_invite">
+            <input type="text" name="invite_code" placeholder="Код приглашения" required>
+            <button type="submit" class="button">Вступить</button>
+        </form>
+    </div>
+    {% endif %}
+
+    <div class="section">
+        <a href="/logout" class="button">Выйти</a>
+    </div>
+</div>
+
+<!-- Модальное окно для переименования группы -->
+<div id="renameModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>Переименовать группу</h3>
+        <form id="renameForm" method="post" action="/rename_group">
+            <input type="hidden" name="group_id" id="rename_group_id">
+            <input type="text" name="new_name" placeholder="Новое название" required>
+            <button type="submit" class="button">Переименовать</button>
+        </form>
+    </div>
+</div>
+
+<!-- Модальное окно для редактирования группы (тип/пароль) -->
+<div id="editModal" class="modal">
+    <div class="modal-content">
+        <span class="close">&times;</span>
+        <h3>Редактировать группу</h3>
+        <form id="editForm" method="post" action="/edit_group_settings">
+            <input type="hidden" name="group_id" id="edit_group_id">
+            <label><input type="checkbox" name="is_open" id="edit_is_open"> Открытая группа (без пароля)</label>
+            <input type="password" name="password" id="edit_password" placeholder="Пароль (для закрытой)">
+            <button type="submit" class="button">Сохранить</button>
+        </form>
+    </div>
+</div>
+
+<script>
+    // Модальные окна для друзей
+    const modals = {
+        addFriend: document.getElementById('addFriendModal'),
+        requests: document.getElementById('requestsModal'),
+        sent: document.getElementById('sentModal')
+    };
+    document.getElementById('addFriendBtn').onclick = () => modals.addFriend.style.display = 'flex';
+    document.getElementById('requestsBtn').onclick = () => modals.requests.style.display = 'flex';
+    document.getElementById('sentBtn').onclick = () => modals.sent.style.display = 'flex';
+
+    function closeAllModals() {
+        for (let m in modals) modals[m].style.display = 'none';
+        document.getElementById('renameModal').style.display = 'none';
+        document.getElementById('editModal').style.display = 'none';
+    }
+    document.querySelectorAll('.close').forEach(close => {
+        close.onclick = closeAllModals;
+    });
+    window.onclick = (e) => {
+        if (e.target.classList && e.target.classList.contains('modal')) closeAllModals();
+    };
+
+    // Копирование ID группы по клику
+    document.querySelectorAll('.group-id').forEach(el => {
+        el.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const id = el.dataset.id;
+            navigator.clipboard.writeText(id).then(() => {
+                const originalText = el.innerText;
+                el.innerText = '(ID скопирован!)';
+                setTimeout(() => { el.innerText = originalText; }, 1000);
+            });
+        });
+    });
+
+    // Выпадающие меню для групп (три точки)
+    document.querySelectorAll('.dots').forEach(dot => {
+        if (dot.id === 'steam-dots') return; // обработка отдельно
+        const dropdown = dot.nextElementSibling;
+        dot.addEventListener('click', (e) => {
+            e.stopPropagation();
+            document.querySelectorAll('.dropdown').forEach(d => d.style.display = 'none');
+            dropdown.style.display = 'block';
+        });
+        const renameBtn = dropdown.querySelector('.rename-group');
+        const editBtn = dropdown.querySelector('.edit-group');
+        const deleteBtn = dropdown.querySelector('.delete-group');
+        const groupId = dot.dataset.groupId;
+        const groupName = dot.dataset.groupName;
+        const isOpen = dot.dataset.groupOpen === 'True';
+
+        renameBtn.onclick = () => {
+            document.getElementById('rename_group_id').value = groupId;
+            document.getElementById('renameModal').style.display = 'flex';
+            dropdown.style.display = 'none';
+        };
+        editBtn.onclick = () => {
+            document.getElementById('edit_group_id').value = groupId;
+            document.getElementById('edit_is_open').checked = isOpen;
+            document.getElementById('edit_password').value = '';
+            document.getElementById('editModal').style.display = 'flex';
+            dropdown.style.display = 'none';
+        };
+        deleteBtn.onclick = () => {
+            if (confirm(`Вы уверены, что хотите удалить группу "${groupName}"? Это действие необратимо.`)) {
+                const form = document.createElement('form');
+                form.method = 'post';
+                form.action = '/delete_group';
+                const input = document.createElement('input');
+                input.type = 'hidden';
+                input.name = 'group_id';
+                input.value = groupId;
+                form.appendChild(input);
+                document.body.appendChild(form);
+                form.submit();
+            }
+            dropdown.style.display = 'none';
+        };
+    });
+
+    // Меню для аватарки Steam (отвязывание)
+    const steamDots = document.getElementById('steam-dots');
+    const steamDropdown = document.getElementById('steam-dropdown');
+    if (steamDots) {
+        steamDots.addEventListener('click', (e) => {
+            e.stopPropagation();
+            steamDropdown.style.display = steamDropdown.style.display === 'block' ? 'none' : 'block';
+        });
+        document.getElementById('unlink-steam')?.addEventListener('click', () => {
+            if (confirm('Отвязать Steam аккаунт? Все данные Steam будут удалены, но аккаунт сайта останется.')) {
+                const form = document.createElement('form');
+                form.method = 'post';
+                form.action = '/unlink_steam';
+                document.body.appendChild(form);
+                form.submit();
+            }
+            steamDropdown.style.display = 'none';
+        });
+    }
+
+    // Закрытие дропдаунов при клике вне
+    document.addEventListener('click', () => {
+        document.querySelectorAll('.dropdown').forEach(d => d.style.display = 'none');
+    });
+</script>
+</body>
+</html>

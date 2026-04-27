@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Чат</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { background: #0e1621; font-family: 'Segoe UI', sans-serif; color: white; height: 100vh; display: flex; flex-direction: column; }
+        .chat-header { background: #17212b; padding: 15px; display: flex; justify-content: space-between; border-bottom: 1px solid #242f3d; }
+        .main { display: flex; flex: 1; overflow: hidden; }
+        .sidebar { width: 260px; background: #17212b; border-right: 1px solid #242f3d; overflow-y: auto; }
+        .contact { padding: 12px 16px; cursor: pointer; border-bottom: 1px solid #242f3d; display: flex; align-items: center; gap: 12px; }
+        .contact:hover { background: #242f3d; }
+        .active { background: #2b5278; }
+        .contact-avatar { width: 40px; height: 40px; border-radius: 50%; object-fit: cover; }
+        .contact-info { flex: 1; }
+        .contact-name { font-weight: bold; }
+        .contact-status { font-size: 0.7rem; color: #6f767e; }
+        .online { color: #4bc37d; }
+        .chat-area { flex: 1; display: flex; flex-direction: column; }
+        .messages { flex: 1; overflow-y: auto; padding: 20px; display: flex; flex-direction: column; gap: 5px; }
+        /* Стили для сообщений */
+        .message-row { display: flex; gap: 10px; margin-bottom: 5px; }
+        .message-avatar { width: 32px; height: 32px; border-radius: 50%; cursor: pointer; flex-shrink: 0; }
+        .message-bubble { max-width: 70%; padding: 8px 12px; border-radius: 18px; background: #242f3d; word-wrap: break-word; }
+        .my-message { justify-content: flex-end; }
+        .my-message .message-bubble { background: #2b5278; }
+        .message-bubble img { max-width: 200px; max-height: 200px; border-radius: 12px; cursor: pointer; }
+        .input-area { display: flex; padding: 15px; background: #17212b; border-top: 1px solid #242f3d; gap: 10px; }
+        .input-area input { flex: 1; background: #242f3d; border: none; padding: 10px; border-radius: 24px; color: white; }
+        .input-area button { background: #2b5278; border: none; padding: 10px 20px; border-radius: 24px; cursor: pointer; color: white; }
+        a { color: #71a7cf; text-decoration: none; }
+    </style>
+</head>
+<body>
+<div class="chat-header">
+    <span>Чат с друзьями</span>
+    <a href="/dashboard">Назад</a>
+</div>
+<div class="main">
+    <div class="sidebar">
+        <h3 style="padding: 12px;">Друзья</h3>
+        <div id="friends-list">
+            {% for f in friends %}
+            <div class="contact" data-type="private" data-id="{{ f }}">
+                <img class="contact-avatar" src="{{ friends_avatars.get(f, '') }}" onerror="this.src='/static/default-avatar.png'">
+                <div class="contact-info">
+                    <div class="contact-name">{{ f }}</div>
+                    <div class="contact-status" id="status-{{ f }}">(офлайн)</div>
+                </div>
+            </div>
+            {% else %}
+            <div class="contact">Нет друзей</div>
+            {% endfor %}
+        </div>
+        <h3 style="padding: 12px;">Группы</h3>
+        <div id="groups-list">
+            {% for g in groups %}
+            <div class="contact" data-type="group" data-id="{{ g[0] }}">
+                <div class="contact-info">
+                    <div class="contact-name">{{ g[1] }}</div>
+                    <div class="contact-status">группа</div>
+                </div>
+            </div>
+            {% else %}
+            <div class="contact">Нет групп</div>
+            {% endfor %}
+        </div>
+    </div>
+    <div class="chat-area">
+        <div class="messages" id="messages">
+            <div style="text-align: center; margin-top: 50px; color: #6f767e;">Выберите диалог слева</div>
+        </div>
+        <div class="input-area" style="display: none;">
+            <input type="text" id="msgInput" placeholder="Сообщение... (Вставляйте скриншоты Ctrl+V)">
+            <button id="sendBtn">Отправить</button>
+        </div>
+    </div>
+</div>
+<script src="https://cdn.socket.io/4.5.0/socket.io.min.js"></script>
+<script>
+    const socket = io();
+    let currentRoom = null;
+    let currentUser = "{{ user }}";
+    let myAvatar = "{{ my_avatar }}";
+    let currentDialogType = null;   // 'private' или 'group'
+    let currentDialogId = null;      // для private - имя друга, для group - id группы
+    const messagesDiv = document.getElementById('messages');
+    const inputArea = document.querySelector('.input-area');
+    const msgInput = document.getElementById('msgInput');
+    const sendBtn = document.getElementById('sendBtn');
+
+    // Словарь аватарок друзей (из шаблона)
+    const friendsAvatars = {{ friends_avatars | tojson }};
+
+    // Вспомогательная функция: открыть Steam профиль
+    function openSteamProfile(username) {
+        fetch(`/get_steam_id/${username}`)
+            .then(res => res.json())
+            .then(data => {
+                if (data.steam_id) {
+                    window.open(`/steam_profile/${data.steam_id}`, '_blank');
+                }
+            });
+    }
+
+    // Функция добавления сообщения в DOM
+    function addMessageToDom(from, text, avatar, isGroup = false, skipAvatarForMe = false) {
+        const isMy = (from === currentUser);
+        // Широкий блок сообщения
+        const row = document.createElement('div');
+        row.className = `message-row ${isMy ? 'my-message' : ''}`;
+
+        // Левая часть: аватар (только для чужих сообщений, и для группы – всегда, для личного – только если не skip)
+        if (!isMy) {
+            // В групповом чате аватар показываем всегда.
+            // В личном чате – показываем только один раз в начале (логика отдельная).
+            // Проще: для личного чата вообще не показываем аватарку у сообщений (оставляем только имя наверху).
+            if (isGroup) {
+                const avatarImg = document.createElement('img');
+                avatarImg.className = 'message-avatar';
+                avatarImg.src = avatar || '/static/default-avatar.png';
+                avatarImg.onerror = () => avatarImg.src = '/static/default-avatar.png';
+                avatarImg.onclick = () => openSteamProfile(from);
+                row.appendChild(avatarImg);
+            } else {
+                // Личный чат: аватарок у сообщений нет (будет отображаться только имя собеседника в заголовке)
+                // Ставим пустой элемент для отступа, чтобы сообщения выравнивались
+                const spacer = document.createElement('div');
+                spacer.style.width = '32px';
+                spacer.style.flexShrink = '0';
+                row.appendChild(spacer);
+            }
+        } else {
+            // Для своих сообщений аватар не показываем, но ставим пустышку для выравнивания
+            const spacer = document.createElement('div');
+            spacer.style.width = '32px';
+            spacer.style.flexShrink = '0';
+            row.appendChild(spacer);
+        }
+
+        // Пузырек сообщения
+        const bubble = document.createElement('div');
+        bubble.className = 'message-bubble';
+        // Определяем, если текст похож на ссылку на изображение (начинается с /static/uploads/)
+        if (text.match(/^\/static\/uploads\/.*\.(jpg|jpeg|png|gif|webp)$/i)) {
+            const img = document.createElement('img');
+            img.src = text;
+            img.onclick = (e) => {
+                e.stopPropagation();
+                window.open(text, '_blank');
+            };
+            bubble.appendChild(img);
+        } else {
+            bubble.innerText = (isGroup && !isMy) ? `${from}: ${text}` : text;
+        }
+        row.appendChild(bubble);
+        messagesDiv.appendChild(row);
+        messagesDiv.scrollTop = messagesDiv.scrollHeight;
+    }
+
+    // Загрузка истории и отображение с учётом правил (личный чат без аватарок)
+    async function loadMessages(type, id) {
+        let url = type === 'private' ? `/get_messages?with=${id}` : `/get_messages?group=${id}`;
+        const resp = await fetch(url);
+        const msgs = await resp.json();
+        messagesDiv.innerHTML = '';
+        if (msgs.length === 0) {
+            messagesDiv.innerHTML = '<div style="text-align:center; margin-top:50px; color:#6f767e;">Нет сообщений. Напишите первое!</div>';
+            return;
+        }
+
+        // Для private чата запоминаем имя собеседника
+        let otherUser = (type === 'private') ? id : null;
+
+        // Отображаем заголовок в личном чате (имя собеседника сверху)
+        if (type === 'private') {
+            const headerDiv = document.createElement('div');
+            headerDiv.style.textAlign = 'center';
+            headerDiv.style.padding = '10px';
+            headerDiv.style.borderBottom = '1px solid #242f3d';
+            headerDiv.style.marginBottom = '15px';
+            headerDiv.innerHTML = `<strong>${otherUser}</strong>`;
+            messagesDiv.appendChild(headerDiv);
+        }
+
+        for (let msg of msgs) {
+            const from_user = msg[0];
+            const text = msg[1];
+            const avatar = msg[3] || '';
+            const isGroup = (type === 'group');
+            // В личном чате аватары не нужны
+            const showAvatar = isGroup; // только для группы
+            addMessageToDom(from_user, text, avatar, showAvatar);
+        }
+    }
+
+    function joinRoom(type, id) {
+        if (currentRoom) socket.emit('leave', { room: currentRoom });
+        currentDialogType = type;
+        currentDialogId = id;
+        currentRoom = type === 'private' ? `private_${currentUser}_${id}` : `group_${id}`;
+        socket.emit('join', { room: currentRoom });
+        loadMessages(type, id);
+        inputArea.style.display = 'flex';
+    }
+
+    // Обработка кликов по контактам
+    document.querySelectorAll('.contact[data-type]').forEach(el => {
+        el.addEventListener('click', () => {
+            document.querySelectorAll('.contact').forEach(c => c.classList.remove('active'));
+            el.classList.add('active');
+            const type = el.dataset.type;
+            const id = el.dataset.id;
+            joinRoom(type, id);
+        });
+    });
+
+    socket.on('new_message', (data) => {
+        if (currentRoom) {
+            const isGroup = (currentDialogType === 'group');
+            // Проверяем, что сообщение относится к текущей комнате (по совпадению отправителя/получателя)
+            // Для группы всегда принимаем, для приватного – проверяем, что сообщение от того, с кем сейчас чат
+            if (currentDialogType === 'private') {
+                const other = currentDialogId;
+                if (data.from !== other && data.from !== currentUser) return;
+            }
+            addMessageToDom(data.from, data.msg, data.avatar, isGroup);
+        }
+    });
+
+    sendBtn.onclick = async () => {
+        const text = msgInput.value.trim();
+        if (!text || !currentRoom) return;
+        socket.emit('send', { room: currentRoom, msg: text });
+        msgInput.value = '';
+    };
+    msgInput.addEventListener('keypress', (e) => { if (e.key === 'Enter') sendBtn.click(); });
+
+    // Вставка изображений
+    msgInput.addEventListener('paste', async (e) => {
+        const items = e.clipboardData.items;
+        for (const item of items) {
+            if (item.type.indexOf('image') === 0) {
+                const blob = item.getAsFile();
+                const formData = new FormData();
+                formData.append('image', blob);
+                const response = await fetch('/upload_image', { method: 'POST', body: formData });
+                const data = await response.json();
+                if (data.url) {
+                    socket.emit('send', { room: currentRoom, msg: data.url });
+                }
+                break;
+            }
+        }
+    });
+
+    // Статусы онлайн
+    socket.on('status_change', (data) => {
+        const statusSpan = document.getElementById(`status-${data.user}`);
+        if (statusSpan) {
+            statusSpan.innerText = data.status === 'online' ? '(онлайн)' : '(офлайн)';
+            statusSpan.className = `contact-status ${data.status === 'online' ? 'online' : ''}`;
+        }
+    });
+</script>
+</body>
+</html>

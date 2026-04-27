@@ -1,0 +1,22 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Привязка Steam</title>
+    <style>
+        body { background: #0e1621; font-family: 'Segoe UI', sans-serif; color: white; text-align: center; margin-top: 50px; }
+        .container { background: #17212b; padding: 30px; border-radius: 24px; width: 400px; margin: auto; }
+        input, button { width: 100%; margin: 10px 0; padding: 10px; border-radius: 12px; border: none; }
+        button { background: #2b5278; color: white; cursor: pointer; }
+    </style>
+</head>
+<body>
+<div class="container">
+    <h2>Привяжите Steam</h2>
+    <form method="post" action="/dashboard">
+        <input type="text" name="steam_link" placeholder="Ссылка на профиль Steam" required>
+        <button type="submit">Привязать</button>
+    </form>
+    <a href="/dashboard">Назад</a>
+</div>
+</body>
+</html>
